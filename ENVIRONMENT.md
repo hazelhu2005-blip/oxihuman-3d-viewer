@@ -85,4 +85,4 @@ cargo install wasm-bindgen-cli
 ## 8. 部署环境
 
 - GitHub Pages：分支 main，目录 / (root)
-- 在线地址：https://YOUR_USERNAME.github.io/YOUR_REPO/oxihuman_index.html
+- 在线地址：https://hazelhu2005-blip.github.io/oxihuman-3d-viewer/oxihuman_index.html

@@ -1,9 +1,9 @@
-# OxiHuman 3D 模型网页
+﻿# OxiHuman 3D 模型网页
 
 基于 HTML + Three.js + WASM 的 3D 人体模型展示页面，主入口为 oxihuman_index.html。
 
-- GitHub 仓库：https://github.com/YOUR_USERNAME/YOUR_REPO
-- 在线预览：https://YOUR_USERNAME.github.io/YOUR_REPO/oxihuman_index.html
+- GitHub 仓库：https://github.com/hazelhu2005-blip/oxihuman-3d-viewer
+- 在线预览：https://hazelhu2005-blip.github.io/oxihuman-3d-viewer/oxihuman_index.html
 - 评审权限：仓库为 Public，可直接 clone 或在线查看
 
 ## 效果展示
