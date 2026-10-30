@@ -1,0 +1,24 @@
+﻿# Dependencies
+node_modules/
+
+# Tool / IDE / browser cache
+.workbuddy/
+_probe/
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log
+
+# HTML backups (root only)
+/*.bak-*.html
+/*.v6-backup-*.html
+/oxihuman.html
+
+# Iteration screenshots (root only, keep screenshots/)
+/改前改后对比-*.png
+/效果图-*.png
