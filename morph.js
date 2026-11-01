@@ -72,7 +72,11 @@ export function computeWeights(p, index) {
   for (const part of ['bust', 'waist', 'hips', 'underbust']) {
     const v = p[part];
     if (v === undefined) continue;
-    const t = (v - 0.5) * 2;
+    let t = (v - 0.5) * 2; 
+    if (part === 'bust') {
+        t = t * 0.6; // 强行把胸部的变化幅度缩小 40%
+    }
+
     const pair = index.measure[part];
     if (!pair) continue;
     if (t > 0) add(pair.incr, t);
@@ -159,7 +163,12 @@ export function applyStature(positions, height01, pivotY, out) {
  * @param {number}       male01     0 = untouched, 1 = full male correction
  */
 export function applyChestCorrection(positions, indices, male01, opts) {
-  const m = clamp01(male01);
+  let m = clamp01(male01);
+  
+  if (m < 0.2) {
+      m = 0.05;
+  }
+
   if (m < 0.002) return positions;
 
   const O = opts || {};
@@ -287,7 +296,7 @@ export function applyGenderSilhouette(positions, male01) {
     const win = ax < 1.7 ? 1 : (2.4 - ax) / 0.7;  // 向体侧平滑收口
     const shoulder = bump(y, 4.55, 1.15);
     const pelvis = bump(y, -0.55, 1.25);
-    const k = m * (0.048 * shoulder - 0.062 * pelvis) * win;
+    const k = m * (0.048 * shoulder - 0.075 * pelvis) * win;
     if (k !== 0) positions[i] = x * (1 + k);
   }
   return positions;
