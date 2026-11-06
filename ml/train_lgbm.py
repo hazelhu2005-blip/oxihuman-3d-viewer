@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
-"""用 Kaggle Body Fat Extended 数据集训练 LightGBM，并把模型导出为前端可直接推理的 JSON。
+"""训练 LightGBM 体脂模型，并把模型导出为前端可直接推理的 JSON。
+
+数据：NHANES 体格测量（2423 条，男 1166 / 女 1257，18-59 岁），
+字段 Gender(1男/2女) / Age / Height / Weight / BMI / Waist / Hip /
+ArmCircumference / BodyFat，与网页表单一一对应。
 
 流程：
-  1) 读取真实体测数据（436 条，男 252 / 女 184），按生理合理性规则清洗；
+  1) 读取数据并做生理范围清洗（缺失、越界、重复去掉）；
   2) 特征只用网页表单能采集到的 8 项：性别、年龄、身高、体重、BMI、腰围、臀围、上臂围；
   3) 用 GridSearchCV 在用户指定的参数网格上搜索（5 折），早停重训后留出测试集评估；
   4) 把 booster 的树结构压成扁平数组，写入 vendor/lgbm_bodyfat.json，供浏览器端 JS 推理。
@@ -14,6 +18,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import platform
 import time
@@ -34,7 +39,7 @@ warnings.filterwarnings("ignore", message=".*eval_set.*")
 
 SEED = 42
 ROOT = Path(__file__).resolve().parent
-DATA = ROOT / "data" / "bodyfat_extended.csv"
+DATA = ROOT / "data" / "bodyfat_nhanes.csv"
 OUT_MODEL = ROOT.parent / "vendor" / "lgbm_bodyfat.json"
 OUT_REPORT = ROOT / "model_report.json"
 
@@ -61,19 +66,35 @@ def tree_pipeline(estimator) -> Pipeline:
     return Pipeline([("imputer", SimpleImputer(strategy="median")), ("model", estimator)])
 
 
+def _pick(raw: pd.DataFrame, *names: str) -> pd.Series:
+    """按候选列名取列（兼容 NHANES 与 Kaggle 两套表头）。"""
+    for n in names:
+        if n in raw.columns:
+            return raw[n]
+    raise KeyError(f"数据缺少列：{names}；实际列={list(raw.columns)}")
+
+
 def load_dataset(path: Path) -> pd.DataFrame:
     raw = pd.read_csv(path)
+
+    # 性别：NHANES 用 1=男/2=女，Kaggle 用 M/F，统一成 1=男/0=女
+    sex_raw = _pick(raw, "Gender", "Sex")
+    if sex_raw.dtype == object:
+        sex = sex_raw.astype(str).str.strip().str.upper().map({"M": 1, "F": 0, "MALE": 1, "FEMALE": 0})
+    else:
+        sex = pd.to_numeric(sex_raw, errors="coerce").map({1: 1, 2: 0})
+
     df = pd.DataFrame({
-        "sex": raw["Sex"].astype(str).str.strip().str.upper().map({"M": 1, "F": 0}),
-        "age": pd.to_numeric(raw["Age"], errors="coerce"),
-        "height": pd.to_numeric(raw["Height"], errors="coerce"),
-        "weight": pd.to_numeric(raw["Weight"], errors="coerce"),
-        "waist": pd.to_numeric(raw["Abdomen"], errors="coerce"),
-        "hip": pd.to_numeric(raw["Hip"], errors="coerce"),
-        "arm": pd.to_numeric(raw["Biceps"], errors="coerce"),
-        "body_fat": pd.to_numeric(raw["BodyFat"], errors="coerce"),
+        "sex": sex,
+        "age": pd.to_numeric(_pick(raw, "Age"), errors="coerce"),
+        "height": pd.to_numeric(_pick(raw, "Height"), errors="coerce"),
+        "weight": pd.to_numeric(_pick(raw, "Weight"), errors="coerce"),
+        "waist": pd.to_numeric(_pick(raw, "Waist", "Abdomen"), errors="coerce"),
+        "hip": pd.to_numeric(_pick(raw, "Hip"), errors="coerce"),
+        "arm": pd.to_numeric(_pick(raw, "ArmCircumference", "Biceps"), errors="coerce"),
+        "body_fat": pd.to_numeric(_pick(raw, "BodyFat"), errors="coerce"),
     })
-    # Kaggle 原始身高单位是米
+    # 少数来源身高单位是米
     if df["height"].median() < 3:
         df["height"] = df["height"] * 100
     df["bmi"] = df["weight"] / (df["height"] / 100) ** 2
@@ -86,7 +107,7 @@ def load_dataset(path: Path) -> pd.DataFrame:
     for col, (lo, hi) in ranges.items():
         mask &= df[col].between(lo, hi)
     df = df[mask].dropna().reset_index(drop=True)
-    return df
+    return df.drop_duplicates(subset=FEATURES + ["body_fat"]).reset_index(drop=True)
 
 
 def export_booster(booster: lightgbm.Booster, feature_names: list[str], num_iteration: int | None = None) -> dict:
@@ -216,6 +237,8 @@ def main() -> None:
     rows[FEATURES + ["pred"]].to_json(ROOT / "export_check.json", orient="records", force_ascii=False)
 
     payload = export_booster(booster, FEATURES, num_iteration=best_iter)
+    raw_rows = int(sum(1 for _ in open(args.data, encoding="utf-8-sig")) - 1)
+    sha = hashlib.sha256(args.data.read_bytes()).hexdigest()
     payload["meta"] = {
         "target": "body_fat",
         "feature_names": FEATURES,
@@ -225,9 +248,11 @@ def main() -> None:
         "n_estimators_used": int(booster.num_trees()),
         "metrics": metrics,
         "dataset": {
-            "name": "Body Fat Extended Dataset (Kaggle, simonezappatini)",
-            "rows_raw": 436, "rows_used": int(len(df)),
-            "sha256": "2c6896ceee9492ed492ccff853776a15d261e4af16a8a110daab9d26aa005b8d",
+            "name": "NHANES 体格测量与 DXA 体脂（智能体脂管家 processed 数据集）",
+            "file": args.data.name,
+            "rows_raw": raw_rows, "rows_used": int(len(df)),
+            "male": int((df.sex == 1).sum()), "female": int((df.sex == 0).sum()),
+            "sha256": sha,
         },
         "lib": {"lightgbm": lightgbm.__version__, "sklearn": sklearn.__version__,
                 "pandas": pd.__version__, "numpy": np.__version__, "python": platform.python_version()},

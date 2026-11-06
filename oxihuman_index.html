@@ -58,11 +58,11 @@ function go(n){if(n<0||n>6)return;pages.forEach((p,i)=>{p.classList.toggle('acti
    强行进入只会是一页「数据不足」。所以前后翻页都在这一步做一次跳页修正。 */
 function stepBy(d){let n=current+d;if(mode==='simple'&&n===3)n+=d;go(n)}
 $$('[data-next]').forEach(b=>b.addEventListener('click',()=>stepBy(1)));$$('[data-prev]').forEach(b=>b.addEventListener('click',()=>stepBy(-1)));
-$$('.mode-card').forEach(b=>b.addEventListener('click',()=>{mode=b.dataset.mode;$$('.mode-card').forEach(x=>x.classList.toggle('selected',x===b));$('#bodyForm').classList.toggle('pro',mode==='pro');$('#modelNote').textContent=mode==='simple'?'简单版仅通过性别和腰围快速估算体脂率。':'专业版依托内置 LightGBM 模型（436 例真实体测数据训练）在浏览器本地推理。'}));
+$$('.mode-card').forEach(b=>b.addEventListener('click',()=>{mode=b.dataset.mode;$$('.mode-card').forEach(x=>x.classList.toggle('selected',x===b));$('#bodyForm').classList.toggle('pro',mode==='pro');$('#modelNote').textContent=mode==='simple'?'简单版仅通过性别和腰围快速估算体脂率。':'专业版依托内置 LightGBM 模型（2422 例真实体测数据训练）在浏览器本地推理。'}));
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));function level5(v,type,gender='male'){const ranges=type==='bf'?(gender==='male'?[6,14,18,25]:[14,21,25,32]):[17,18.5,24,28];return['超低','偏低','正常','偏高','超高'][ranges.filter(x=>v>=x).length]}
 /* ── 内置 LightGBM 推理（lgbm-flat-v1） ─────────────────────────────
-   vendor/lgbm_bodyfat.json 由 ml/train_lgbm.py 从 Kaggle Body Fat Extended
-   数据集训练后导出：每棵树按先序展平成数组，节点 =
+   vendor/lgbm_bodyfat.json 由 ml/train_lgbm.py 从 NHANES 体格测量与 DXA
+   体脂数据集（2422 例）训练后导出：每棵树按先序展平成数组，节点 =
    [是否叶子, 特征下标, 分裂阈值, 左子下标, 右子下标, 叶子值]。
    预测值 = 所有树叶子值之和（学习率已经折进叶子值），所以浏览器里几十行
    代码就能复现 Python 侧同一个模型的输出，不再依赖 127.0.0.1:8001。
@@ -70,7 +70,7 @@ const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));function level5(v,type,gender='ma
 const LGBM={model:null,error:null,pending:null};
 function lgbmLoad(){
   if(LGBM.pending)return LGBM.pending;
-  LGBM.pending=fetch('./vendor/lgbm_bodyfat.json',{cache:'force-cache'})
+  LGBM.pending=fetch('./vendor/lgbm_bodyfat.json',{cache:'no-cache'})
     .then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.json()})
     .then(m=>{if(!m||!m.trees||!m.trees.length)throw new Error('模型文件为空');LGBM.model=m;return m})
     .catch(e=>{LGBM.error=e;console.warn('[LightGBM] 模型未加载，改用线性公式兜底：'+e.message);return null});

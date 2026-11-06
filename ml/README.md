@@ -6,10 +6,14 @@ JSON 放到 `vendor/lgbm_bodyfat.json`，浏览器直接推理，**不需要任�
 
 ## 数据
 
-- 数据集：Kaggle **Body Fat Extended Dataset**（simonezappatini），436 条真实体测记录，
-  男性 252 / 女性 184；体脂率由水下称重得到的体密度经 Siri 方程换算。
-- 本地文件：`ml/data/bodyfat_extended.csv`，SHA-256 `2c6896ce…005b8d`，来源说明见 `ml/data/SOURCE.md`。
-- 清洗：剔除年龄、身高、体重、腰围、臀围、上臂围或体脂率超出生理合理范围的记录，剩 **432 条**。
+- 数据集：**NHANES 体格测量 + DXA 体脂**（来自 `D:\智能体脂管家\data\processed处理后的数据\bodyfat_dataset.csv`），
+  原始 2423 条，男性 1166 / 女性 1256，年龄 18–59 岁。
+- 本地文件：`ml/data/bodyfat_nhanes.csv`，SHA-256 `dd910dba…c08530b`，字段与来源见 `ml/data/SOURCE.md`。
+- 清洗：按生理合理范围过滤（年龄 18–85、身高 140–210、体重 35–250、腰围 45–180、臀围 60–180、
+  上臂围 15–80、体脂 2–60）并去重，剩 **2422 条**（男 1166 / 女 1256），无缺失。
+
+原始字段：`SEQN, Gender, Age, Weight, Height, BMI, Waist, Hip, ArmCircumference, BodyFat`，
+其中 `Gender` 为 NHANES 编码（1=男，2=女）。
 
 ## 特征
 
@@ -17,22 +21,23 @@ JSON 放到 `vendor/lgbm_bodyfat.json`，浏览器直接推理，**不需要任�
 
 | 字段 | 含义 | 备注 |
 |---|---|---|
-| `sex` | 性别 | 1=男，0=女（前端传 1/2，调用前转换） |
+| `sex` | 性别 | 1=男，0=女（数据集 1/2 → 0/1，前端传 1/2 由 `lgbmPredict` 转换） |
 | `age` | 年龄 | 岁 |
-| `height` | 身高 | cm（原始数据为米，训练脚本自动 ×100） |
+| `height` | 身高 | cm（脚本自动识别米的单位并 ×100） |
 | `weight` | 体重 | kg |
 | `bmi` | BMI | `weight/(height/100)^2`，由前端现算 |
-| `waist` | 腰围 | 对应数据集 `Abdomen`（脐部腹围） |
+| `waist` | 腰围 | 对应数据集 `Waist`（兼容旧表头 `Abdomen`） |
 | `hip` | 臀围 | cm |
-| `arm` | 上臂围 | 对应数据集 `Biceps` |
+| `arm` | 上臂围 | 对应数据集 `ArmCircumference`（兼容旧表头 `Biceps`） |
 
 目标：`body_fat`（体脂率 %）。
 
 ## 训练
 
 ```bash
-python ml/train_lgbm.py            # 全网格，5 折，约 90 秒
+python ml/train_lgbm.py            # 全网格，5 折，约 3.5 分钟
 python ml/train_lgbm.py --quick    # 小网格冒烟
+python ml/train_lgbm.py --data 其他路径.csv   # 换数据源（自动识别两套表头）
 ```
 
 流水线：`SimpleImputer(median) → LGBMRegressor`，用 `GridSearchCV` 在下列网格上搜索
@@ -49,16 +54,21 @@ python ml/train_lgbm.py --quick    # 小网格冒烟
 
 选出的最优组合再用 15% 验证集早停（patience 60）重训，剪掉多余轮次，最后在 15% 留出测试集上评估。
 
-### 当前结果
+> 注：LightGBM 的 sklearn 接口需要 `subsample_freq>0` 才会真正启用行采样，默认 0，
+> 所以网格里的 `subsample` 实际不生效——小网格与全网格跑出相同结果不是缓存问题。
+
+### 当前结果（NHANES 2422 条）
 
 | 指标 | 数值 |
 |---|---|
-| 交叉验证 RMSE | 4.44 |
-| 测试集 RMSE / MAE / R² | 4.17 / 3.44 / 0.646 |
-| 最优参数 | `n_estimators=200, num_leaves=7, lr=0.03, colsample=0.85, subsample=0.7, λ=1.0` |
-| 实际使用轮次 | 133 棵（早停） |
+| 交叉验证 RMSE | 3.292 |
+| 测试集 RMSE / MAE / R² | 3.393 / 2.623 / **0.841** |
+| 最优参数 | `n_estimators=200, num_leaves=7, lr=0.1, colsample=0.7, subsample=0.7, λ=10.0` |
+| 实际使用轮次 | 187 棵（早停） |
+| 模型体积 | 82 KB |
 
-样本量只有 432 条，R²≈0.65 属正常范围；指标仅代表该固定留出集，不能替代独立人群验证。
+相比早期的 436 条 Kaggle 数据（R² 0.646），样本量与人群覆盖提升后 R² 到 0.841，
+MAE 从 3.44 降到 2.62 个百分点。指标仅代表该固定留出集，不能替代独立人群验证。
 
 ## 导出格式（`lgbm-flat-v1`）
 
@@ -68,7 +78,7 @@ python ml/train_lgbm.py --quick    # 小网格冒烟
 {
   "format": "lgbm-flat-v1",
   "feature_names": ["sex","age","height","weight","bmi","waist","hip","arm"],
-  "num_trees": 133,
+  "num_trees": 187,
   "trees": [ [ [isLeaf, featureIdx, threshold, leftIdx, rightIdx, leafValue], ... ], ... ],
   "meta": { "best_params": {...}, "metrics": {...}, "dataset": {...} }
 }
@@ -79,13 +89,14 @@ python ml/train_lgbm.py --quick    # 小网格冒烟
 不需要再乘 `learning_rate`）。
 
 前端实现见 `oxihuman_index.html` 里的 `lgbmLoad()` / `lgbmPredict()`：加载一次 JSON 缓存到内存，
-每次提交表单遍历 133 棵树，耗时亚毫秒级。
+每次提交表单遍历 187 棵树，耗时亚毫秒级。请求用 `cache:'no-cache'`，
+每次带 ETag 校验——模型更新后老用户不会卡在浏览器缓存的旧版本上。
 
 ### 一致性校验
 
 ```bash
 node ml/verify_export.mjs     # 读取 ml/export_check.json，逐条比对 JS 与 Python 推理
-# 实测 132 条样本最大误差 4.9e-07（浮点精度级）
+# 实测 132 条样本最大误差 4.8e-07（浮点精度级）
 ```
 
 `ml/export_check.json` 由训练脚本生成（120 条数据抽样 + 12 组边界组合），换模型后可复跑校验。
@@ -98,6 +109,10 @@ node ml/verify_export.mjs     # 读取 ml/export_check.json，逐条比对 JS �
 
 ## 注意
 
-模型输出与旧线性公式不是同一口径：真实数据里同围度人群更瘦，例如 170cm/65kg、
-腰围 82cm、臀围 94cm、上臂围 30cm 的 30 岁男性，线性公式给 23%，模型给约 14%。
-这是数据驱动结果，页面上的分级阈值（男 6/14/18/25）仍适用。
+模型输出与旧线性公式不是同一口径：线性公式在同围度人群上偏高。
+例如 170cm/65kg、腰围 82cm、臀围 92cm、上臂围 31cm 的 30 岁男性，
+线性公式给 23.0%，模型给 **20.4%**（该数据集中腰围 78–86 男性的体脂中位数是 21.1%）。
+页面分级阈值（男 6/14/18/25）仍适用。
+
+简单版走的是另一条腰围公式（男 `0.567×腰围 − 31.8`，女 `0.439×腰围 − 15.2`），
+只输入腰围时给出 14.7%，与专业版存在口径差，属原有设计。
