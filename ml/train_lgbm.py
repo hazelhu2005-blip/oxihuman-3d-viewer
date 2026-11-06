@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import platform
 import time
 import warnings
@@ -39,8 +40,9 @@ warnings.filterwarnings("ignore", message=".*eval_set.*")
 
 SEED = 42
 ROOT = Path(__file__).resolve().parent
-DATA = ROOT / "data" / "bodyfat_nhanes.csv"
-OUT_MODEL = ROOT.parent / "vendor" / "lgbm_bodyfat.json"
+# 默认值可被环境变量覆盖（见仓库根目录 .env.example），也支持 --data 命令行参数
+DATA = Path(os.environ.get("OXIHUMAN_DATA") or ROOT / "data" / "bodyfat_nhanes.csv")
+OUT_MODEL = Path(os.environ.get("OXIHUMAN_MODEL_OUT") or ROOT.parent / "vendor" / "lgbm_bodyfat.json")
 OUT_REPORT = ROOT / "model_report.json"
 
 # 前端表单实际能拿到的字段，顺序即 JSON 里的 feature_names

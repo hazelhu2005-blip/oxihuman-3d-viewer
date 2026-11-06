@@ -1,14 +1,25 @@
 {
   "name": "oxihuman",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "version": "1.1.0",
+  "description": "OxiHuman · 智能体脂管家 —— 浏览器端 3D 体脂分布可视化与 LightGBM 体脂预测",
+  "main": "server.mjs",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.mjs",
+    "serve": "node server.mjs",
+    "serve:env": "node --env-file=.env server.mjs",
+    "train": "python ml/train_lgbm.py",
+    "verify:model": "node ml/verify_export.mjs"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "threejs",
+    "webgl",
+    "lightgbm",
+    "body-fat",
+    "health-visualization",
+    "echarts"
+  ],
+  "author": "Hazel <hazelhu2005@gmail.com>",
+  "license": "SEE LICENSE IN README.md",
   "type": "commonjs",
   "dependencies": {
     "@cooljapan/oxihuman": "^0.2.0"
