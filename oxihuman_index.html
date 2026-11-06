@@ -61,7 +61,7 @@ $$('[data-next]').forEach(b=>b.addEventListener('click',()=>stepBy(1)));$$('[dat
 $$('.mode-card').forEach(b=>b.addEventListener('click',()=>{mode=b.dataset.mode;$$('.mode-card').forEach(x=>x.classList.toggle('selected',x===b));$('#bodyForm').classList.toggle('pro',mode==='pro');$('#modelNote').textContent=mode==='simple'?'简单版仅通过性别和腰围快速估算体脂率。':'专业版依托内置 LightGBM 模型（2422 例真实体测数据训练）在浏览器本地推理。'}));
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));function level5(v,type,gender='male'){const ranges=type==='bf'?(gender==='male'?[6,14,18,25]:[14,21,25,32]):[17,18.5,24,28];return['超低','偏低','正常','偏高','超高'][ranges.filter(x=>v>=x).length]}
 /* ── 内置 LightGBM 推理（lgbm-flat-v1） ─────────────────────────────
-   vendor/lgbm_bodyfat.json 由 ml/train_lgbm.py 从 NHANES 体格测量与 DXA
+   vendor/lgbm_bodyfat.json 由 LightGBM 离线训练，从 NHANES 体格测量与 DXA
    体脂数据集（2422 例）训练后导出：每棵树按先序展平成数组，节点 =
    [是否叶子, 特征下标, 分裂阈值, 左子下标, 右子下标, 叶子值]。
    预测值 = 所有树叶子值之和（学习率已经折进叶子值），所以浏览器里几十行

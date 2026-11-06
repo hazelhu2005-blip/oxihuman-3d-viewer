@@ -5,10 +5,7 @@
   "main": "server.mjs",
   "scripts": {
     "start": "node server.mjs",
-    "serve": "node server.mjs",
-    "serve:env": "node --env-file=.env server.mjs",
-    "train": "python ml/train_lgbm.py",
-    "verify:model": "node ml/verify_export.mjs"
+    "serve": "node server.mjs"
   },
   "keywords": [
     "threejs",
@@ -20,8 +17,5 @@
   ],
   "author": "Hazel <hazelhu2005@gmail.com>",
   "license": "SEE LICENSE IN README.md",
-  "type": "commonjs",
-  "dependencies": {
-    "@cooljapan/oxihuman": "^0.2.0"
-  }
+  "private": true
 }

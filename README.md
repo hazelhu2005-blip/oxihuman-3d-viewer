@@ -10,7 +10,6 @@
 
 - 🌐 在线预览：<https://hazelhu2005-blip.github.io/oxihuman-3d-viewer/>
 - 📦 仓库地址：<https://github.com/hazelhu2005-blip/oxihuman-3d-viewer>
-- 📄 环境配置详解：[ENVIRONMENT.md](./ENVIRONMENT.md) · 模型训练说明：[ml/README.md](./ml/README.md)
 
 ---
 
@@ -59,28 +58,6 @@ OxiHuman 把「一个数字」拆成三层可感知的信息：
 
 ---
 
-## 效果展示
-
-**身体画像总览**（专业版，170cm / 65kg / 腰围 82cm，模型预测体脂 20.4%）
-
-![身体画像总览](./screenshots/page-portrait.png)
-
-**深度分析**：只展示用户量过围度的四个部位，占比在四块内重新归一
-
-![深度分析](./screenshots/page-deep-analysis.png)
-
-**3D 模型细节**
-
-| 男性正面 | 女性正面 |
-|---|---|
-| ![男性正面](./screenshots/male-front-v8.png) | ![女性正面](./screenshots/female-front-v8.png) |
-
-| 腰胯特写 | 颈肩特写 |
-|---|---|
-| ![腰胯](./screenshots/waist-hip-v8.png) | ![颈肩](./screenshots/neck-shoulder-v8.png) |
-
----
-
 ## 核心特性
 
 - **纯浏览器推理**：LightGBM 树结构展平为数组，`lgbmPredict()` 逐棵遍历求和，亚毫秒级；JS 与 Python 推理最大误差 `4.8e-07`。
@@ -89,7 +66,7 @@ OxiHuman 把「一个数字」拆成三层可感知的信息：
 - **上端软化**：指数逼近 1 用指数渐近（`softCap`）而非硬截断，极端体型之间仍保留高低次序。
 - **口径统一**：模型体脂同时驱动 3D 热力图、第 3 页「优先关注」与第 4 页部位占比，三处不会互相打架。
 - **优雅降级**：模型文件加载失败 → 回退旧本地接口 → 再回退线性公式，页面始终有结果。
-- **零依赖服务**：`server.mjs` 只用 Node 内置模块，正确处理 `.wasm` 的 `application/wasm` MIME。
+- **零依赖服务**：`server.mjs` 只用 Node 内置模块，开箱即可本地预览。
 
 ---
 
@@ -104,7 +81,7 @@ flowchart TD
     C --> D["体脂率 bf"]
     D --> E["身体指标<br/>BMI / 去脂体重 / BMR<br/>腰高比 / 腰臀比 / 体脂分级"]
     D --> F["部位指数<br/>rawOf → getIndices<br/>PRIOR 先验 → softCap"]
-    F --> G["3D 渲染<br/>Three.js + WASM<br/>OHPK 拓扑 → 顶点形变 → 顶点着色"]
+    F --> G["3D 渲染<br/>Three.js + OHPK 拓扑<br/>顶点形变 → 顶点着色"]
     F --> H["ECharts<br/>部位占比条形图"]
     E --> I["建议引擎<br/>运动 / 饮食 / 逐日路线"]
     F --> I
@@ -120,7 +97,7 @@ flowchart TD
 | 层 | 实现 | 关键文件 |
 |---|---|---|
 | 表现层 | 单文件 HTML + 内联 CSS/JS，7 个 `<section class="page">` 由 `go(n)` 切换，无框架、无构建 | `oxihuman_index.html` |
-| 3D 渲染层 | Three.js `WebGLRenderer` + `OrbitControls`；体积数据从 OHPK 包解析，WASM 管线做几何重建，`morph.js` 施加部位形变 | `vendor/three.module.js`、`ohpk.js`、`morph.js`、`oxihuman_wasm_bg.wasm` |
+| 3D 渲染层 | Three.js `WebGLRenderer`；体积数据从 OHPK 包解析（`parseOhpk` / `extractBody` / `weldMesh`），`morph.js` 施加部位形变 | `vendor/three.module.js`、`ohpk.js`、`morph.js`、`oxihuman-core-v1.ohpk` |
 | 推理层 | LightGBM 模型导出为扁平节点数组，`lgbm-flat-v1` 格式，纯 JS 遍历 | `vendor/lgbm_bodyfat.json` |
 | 指标层 | 体脂 → 五处原始厚度 → 整体水平 `lev` × 局部偏离 `dev` × 解剖先验 `PRIOR` → `softCap` | `oxihuman_index.html` 内 `rawOf` / `getIndices` |
 | 归因层 | 精确 Shapley：2⁵ 子集全枚举，`w = s!(n−s−1)!/n!`；目标量为七部位指数 | `shapContrib()` |
@@ -160,33 +137,23 @@ sequenceDiagram
 
 ### 目录结构
 
+仓库只保留运行网页所需的文件：
+
 ```
 .
-├── oxihuman_index.html          # 主入口：7 页应用（830 KB，内联 CSS/JS）
 ├── index.html                   # GitHub Pages 根路径跳转页
-├── server.mjs                   # 零依赖本地静态服务器（.wasm MIME / 双端口 / CORS）
-├── package.json                 # npm 脚本（start / train / verify:model）
-├── requirements.txt             # 模型训练的 Python 依赖
-├── .env.example                 # 环境变量模板（端口、数据与模型路径）
-├── ENVIRONMENT.md               # 完整环境配置说明
-├── vendor/                      # 前端依赖（已本地化，无需 npm install）
-│   ├── three.module.js          #   Three.js 渲染引擎
-│   ├── OrbitControls.js         #   相机轨道控制
-│   ├── echarts.min.js           #   图表库
-│   └── lgbm_bodyfat.json        #   LightGBM 体脂模型（82 KB / 187 棵）
-├── ohpk.js / morph.js           # OHPK 数据包解析 / 部位形变
-├── oxihuman-core-v1.ohpk        # 核心几何数据包（2.0 MB）
-├── tree.json                    # 骨骼树（1.7 MB）
-├── _body.bin                    # 旧版几何数据（历史遗留，页面未引用）
-├── oxihuman_wasm_bg.wasm        # WASM 运行时（424 KB）
-├── ml/                          # 模型训练与校验
-│   ├── train_lgbm.py            #   训练 + 网格搜索 + 导出
-│   ├── verify_export.mjs        #   JS 与 Python 推理一致性校验
-│   ├── model_report.json        #   训练报告（指标 / 参数 / 数据指纹）
-│   ├── model.txt                #   LightGBM 原生模型
-│   └── data/                    #   数据集与来源说明
-├── src/rust/                    # 引擎核心 Rust 源码（参考，编译 WASM 用）
-└── screenshots/                 # README 效果图
+├── oxihuman_index.html          # 主入口：7 页应用（内联 CSS/JS）
+├── ohpk.js                      # OHPK 几何数据包解析
+├── morph.js                     # 部位形变（按部位指数改顶点）
+├── oxihuman-core-v1.ohpk        # 3D 几何数据包（2.0 MB）
+├── LipoCare-mark.png            # 品牌角标（页面唯一图片资源）
+├── server.mjs                   # 零依赖本地静态服务器
+├── package.json                 # npm start / npm run serve
+├── README.md
+└── vendor/                      # 前端依赖，已本地化，无需 npm install
+    ├── three.module.js          #   Three.js WebGL 渲染引擎
+    ├── echarts.min.js           #   ECharts 图表库
+    └── lgbm_bodyfat.json        #   LightGBM 体脂模型（82 KB / 187 棵）
 ```
 
 ---
@@ -197,11 +164,10 @@ sequenceDiagram
 
 | 项目 | 版本 | 说明 |
 |---|---|---|
-| 浏览器 | Chrome / Edge 最新版 | 必须支持 **WebGL** 与 **WebAssembly** |
+| 浏览器 | Chrome / Edge 最新版 | 必须支持 **WebGL** 与 ES Module |
 | Node.js | ≥ 18（实测 22.22.2） | 仅用于本地静态服务；不装也能用 Python 起服务 |
-| Python | ≥ 3.8（实测 3.12.5） | 仅用于**重新训练模型**，运行网页不需要 |
 
-> ⚠️ **不要双击 HTML 直接打开**。`file://` 协议下 WASM 与模型 JSON 会被 CORS 拦截，页面会停在「填写数据后生成身材示意」的状态。
+> ⚠️ **不要双击 HTML 直接打开**。`file://` 协议下模型 JSON 会被 CORS 拦截，页面会停在「填写数据后生成身材示意」的状态。
 
 ### 方式一：Node（推荐）
 
@@ -219,8 +185,8 @@ npm start                      # 等价于 node server.mjs
 脚本会自动尝试 **8080 / 8081** 两个端口，被占用则跳到下一个；都占用时会提示你怎样换端口：
 
 ```bash
-PORT=8090 node server.mjs      # macOS / Linux
-$env:PORT=8090; node server.mjs   # Windows PowerShell
+PORT=8090 node server.mjs            # macOS / Linux / Git Bash
+$env:PORT=8090; node server.mjs      # Windows PowerShell
 ```
 
 ### 方式二：Python
@@ -231,7 +197,7 @@ python -m http.server 8000
 
 打开 <http://localhost:8000/oxihuman_index.html>
 
-> Python 的 `http.server` 对 `.wasm` 返回的 MIME 不一定是 `application/wasm`，部分浏览器会拒绝实例化。若 3D 模型不出现，优先用方式一。
+> Python 的 `http.server` 对 `.ohpk` 返回的 MIME 是 `application/octet-stream` 以外的猜测量，少数浏览器会按错误类型处理。若 3D 模型不出现，优先用方式一。
 
 ### 方式三：GitHub Pages（无需安装）
 
@@ -241,98 +207,64 @@ python -m http.server 8000
 
 ## 环境配置
 
-完整说明见 **[ENVIRONMENT.md](./ENVIRONMENT.md)**，此处给要点。
+### 环境变量
 
-### 环境变量模板
-
-仓库提供 [`.env.example`](./.env.example)，复制后按需修改：
-
-```bash
-cp .env.example .env
-```
+前端是**纯静态**的，不读取任何环境变量 —— 它按相对路径加载 `vendor/` 与资产文件，换域名、换端口都无需改配置。唯一的环境变量由本地服务脚本使用：
 
 | 变量 | 默认值 | 作用范围 | 说明 |
 |---|---|---|---|
 | `PORT` | `8080` | `server.mjs` | 本地服务主端口，脚本会同时尝试 `PORT+1` |
-| `OXIHUMAN_DATA` | `ml/data/bodyfat_nhanes.csv` | `ml/train_lgbm.py` | 训练数据路径，也可用 `--data` 覆盖 |
-| `OXIHUMAN_MODEL_OUT` | `vendor/lgbm_bodyfat.json` | `ml/train_lgbm.py` | 导出模型路径，页面从这个位置加载 |
 
-加载方式（Node ≥ 20.6 原生支持，无需 dotenv）：
+如需固定配置，可在仓库根新建 `.env`（已被 `.gitignore` 忽略）后：
 
 ```bash
-npm run serve:env              # 等价于 node --env-file=.env server.mjs
-python ml/train_lgbm.py        # Python 侧同样读取这三个变量（需自行 export）
+node --env-file=.env server.mjs      # Node ≥ 20.6 原生支持，无需 dotenv
 ```
 
-`.env` 已被 `.gitignore` 忽略。**前端页面本身是纯静态的，不读取任何环境变量** —— 它按相对路径加载 `vendor/` 与资产文件，因此换域名、换端口都无需改配置。
+```dotenv
+PORT=8080
+```
 
 ### 依赖清单
 
-**① 前端依赖（已本地化，无需安装）**
+**① 前端依赖（已随仓库提供，无需安装）**
 
-| 文件 | 版本/大小 | 用途 |
+| 文件 | 大小 | 用途 |
 |---|---|---|
 | `vendor/three.module.js` | 1.27 MB | Three.js WebGL 渲染引擎（ES Module） |
-| `vendor/OrbitControls.js` | 30 KB | 相机轨道控制 |
 | `vendor/echarts.min.js` | 1.03 MB | ECharts 图表库 |
 | `vendor/lgbm_bodyfat.json` | 82 KB | LightGBM 体脂模型（187 棵树） |
 
 **② Node 端依赖（零第三方包）**
 
-`server.mjs` 仅使用 `node:http` / `node:fs` / `node:net` / `node:path` / `node:url`。
-`package.json` 中的 `@cooljapan/oxihuman` 是上游引擎包，**运行本页面不依赖它**。
+`server.mjs` 仅使用 `node:http` / `node:fs` / `node:net` / `node:path` / `node:url`；`package.json` 无 `dependencies`，克隆后直接 `npm start`。
 
-**③ Python 端依赖（仅重新训练模型时需要）**
+**③ 运行时自检**
 
-见 [`requirements.txt`](./requirements.txt)：
+页面右上角显示「本地计算」时表示模型已在浏览器内加载成功。若想确认：
 
-| 包 | 版本 | 用途 |
-|---|---|---|
-| `lightgbm` | 4.7.0 | 模型训练与树导出 |
-| `scikit-learn` | 1.8.0 | `Pipeline` / `GridSearchCV` / 早停 |
-| `pandas` | 3.0.2 | 数据读取与清洗 |
-| `numpy` | 2.4.4 | 数值计算 |
-
-```bash
-pip install -r requirements.txt
+```js
+// 打开页面后在控制台执行
+window.__lgbm.state()   // → { ready: true, error: null, trees: 187 }
 ```
-
-**④ 模型与资产文件（仓库已包含）**
-
-| 文件 | 大小 | 说明 |
-|---|---|---|
-| `oxihuman-core-v1.ohpk` | 2.0 MB | 核心几何数据包 |
-| `tree.json` | 1.7 MB | 骨骼树 |
-| `oxihuman_wasm_bg.wasm` | 424 KB | WASM 运行时（已预编译） |
-| `_body.bin` | 3.2 MB | 旧版几何数据，**页面未引用**，历史遗留 |
 
 ---
 
-## 模型训练与复现
+## 体脂模型
 
-```bash
-pip install -r requirements.txt
-
-python ml/train_lgbm.py            # 全网格 1296 组 × 5 折，约 3.5 分钟
-python ml/train_lgbm.py --quick    # 小网格冒烟
-python ml/train_lgbm.py --data 其他数据.csv
-node ml/verify_export.mjs          # JS 与 Python 推理一致性校验
-```
-
-**数据**：NHANES 体格测量 + DXA 体脂，原始 2423 条（男 1166 / 女 1257，18–59 岁），清洗去重后 **2422 条**。
-
-**结果**：
+模型已训练完成并固化在 `vendor/lgbm_bodyfat.json`，**运行网页不需要 Python、不需要重新训练**。
 
 | 指标 | 数值 |
 |---|---|
 | 特征 | 性别、年龄、身高、体重、BMI、腰围、臀围、上臂围（8 项，全部来自表单） |
+| 训练数据 | NHANES 体格测量 + DXA 体脂，原始 2423 条（男 1166 / 女 1257，18–59 岁），清洗去重后 2422 条 |
 | 交叉验证 RMSE | 3.292 |
 | 测试集 RMSE / MAE / R² | 3.393 / 2.623 / **0.841** |
 | 最优参数 | `n_estimators=200, num_leaves=7, lr=0.1, colsample=0.7, subsample=0.7, λ=10` |
 | 实际树数 / 体积 | 187 棵 / 82 KB |
 | JS ↔ Python 最大误差 | `4.8e-07` |
 
-数据来源、字段映射、导出格式与一致性校验细节见 **[ml/README.md](./ml/README.md)** 与 **[ml/data/SOURCE.md](./ml/data/SOURCE.md)**。
+导出格式 `lgbm-flat-v1`：每棵树按先序展平，节点为 `[isLeaf, featureIdx, threshold, leftIdx, rightIdx, leafValue]`，叶子值已含学习率，浏览器只需逐棵求和。
 
 ---
 
@@ -368,7 +300,7 @@ node ml/verify_export.mjs          # JS 与 Python 推理一致性校验
 
 ## 数据来源与免责声明
 
-- **训练数据**：NHANES 体格测量与 DXA 体脂数据（美国 CDC / NCHS 公开数据），经 `D:\智能体脂管家` 清洗流程处理；历史版本曾使用 Kaggle *Body Fat Extended Dataset*。
+- **训练数据**：NHANES 体格测量与 DXA 体脂数据（美国 CDC / NCHS 公开数据），经统一清洗流程处理；历史版本曾使用 Kaggle *Body Fat Extended Dataset*。
 - **开源组件**：Three.js（MIT）、ECharts（Apache-2.0）、LightGBM（MIT）、scikit-learn（BSD-3）。
 - **免责声明**：本项目输出的体脂率、身体年龄、代谢风险比例均为**统计估计与趋势筛查**，不构成医学诊断。个体差异、测量误差与模型局限都可能带来偏差，健康决策请咨询专业医师。
 

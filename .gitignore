@@ -14,22 +14,13 @@ Thumbs.db
 # Logs
 *.log
 
-# HTML backups (root only)
+# 本地环境变量（仅 PORT 一项会被 server.mjs 读取）
+.env
+.env.local
+
+# 本地迭代备份（不进入仓库）
 /*.bak-*.html
 /*.v6-backup-*.html
 /oxihuman.html
-
-# Iteration screenshots (root only, keep screenshots/)
 /改前改后对比-*.png
 /效果图-*.png
-
-# Python
-__pycache__/
-*.pyc
-
-# 训练日志
-ml/train_full.log
-
-# 本地环境变量（模板见 .env.example）
-.env
-.env.local
