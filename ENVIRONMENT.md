@@ -42,6 +42,7 @@ node server.mjs
 - vendor/three.module.js：Three.js 核心渲染引擎
 - vendor/OrbitControls.js：相机轨道控制
 - vendor/echarts.min.js：图表库
+- vendor/lgbm_bodyfat.json：LightGBM 体脂预测模型（约 60KB），页面加载后在浏览器本地推理，无需后端服务
 
 若需升级，替换 vendor/ 下对应文件即可。
 

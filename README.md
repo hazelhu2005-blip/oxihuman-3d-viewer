@@ -28,7 +28,8 @@
 - _body.bin：模型几何数据
 - server.mjs：本地 HTTP 服务
 - package.json：npm 配置
-- vendor/：本地依赖库（Three.js、OrbitControls、ECharts）
+- vendor/：本地依赖库（Three.js、OrbitControls、ECharts），以及 `lgbm_bodyfat.json`（LightGBM 体脂模型，浏览器端推理）
+- ml/：体脂模型的训练、导出与校验脚本（`train_lgbm.py`、`verify_export.mjs`、数据集与训练报告）
 - src/rust/：Rust 引擎源码
 - screenshots/：README 效果图
 

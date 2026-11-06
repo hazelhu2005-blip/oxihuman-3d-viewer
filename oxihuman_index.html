@@ -58,11 +58,49 @@ function go(n){if(n<0||n>6)return;pages.forEach((p,i)=>{p.classList.toggle('acti
    强行进入只会是一页「数据不足」。所以前后翻页都在这一步做一次跳页修正。 */
 function stepBy(d){let n=current+d;if(mode==='simple'&&n===3)n+=d;go(n)}
 $$('[data-next]').forEach(b=>b.addEventListener('click',()=>stepBy(1)));$$('[data-prev]').forEach(b=>b.addEventListener('click',()=>stepBy(-1)));
-$$('.mode-card').forEach(b=>b.addEventListener('click',()=>{mode=b.dataset.mode;$$('.mode-card').forEach(x=>x.classList.toggle('selected',x===b));$('#bodyForm').classList.toggle('pro',mode==='pro');$('#modelNote').textContent=mode==='simple'?'简单版仅通过性别和腰围快速估算体脂率。':'专业版依托基于数据训练的 LightGBM 机器学习模型预测体脂。'}));
+$$('.mode-card').forEach(b=>b.addEventListener('click',()=>{mode=b.dataset.mode;$$('.mode-card').forEach(x=>x.classList.toggle('selected',x===b));$('#bodyForm').classList.toggle('pro',mode==='pro');$('#modelNote').textContent=mode==='simple'?'简单版仅通过性别和腰围快速估算体脂率。':'专业版依托内置 LightGBM 模型（436 例真实体测数据训练）在浏览器本地推理。'}));
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));function level5(v,type,gender='male'){const ranges=type==='bf'?(gender==='male'?[6,14,18,25]:[14,21,25,32]):[17,18.5,24,28];return['超低','偏低','正常','偏高','超高'][ranges.filter(x=>v>=x).length]}
-async function predictBodyFatLightGBM(){const gender=document.querySelector('[name=gender]:checked').value==='male'?1:2,height=+$('#height').value,weight=+$('#weight').value,waist=+$('#waist').value,age=+$('#age').value,hip=+$('#hip').value,arm=+$('#arm').value,bmi=weight/(height/100)**2,ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),6000);try{const res=await fetch('http://127.0.0.1:8001/api/bodyfat/predict',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({Gender:gender,Age:age,Weight:weight,Height:height,BMI:bmi,Waist:waist,Hip:hip,ArmCircumference:arm}),signal:ctl.signal});if(!res.ok)throw new Error('bad response');const data=await res.json();return clamp(+data.body_fat,3,60)}catch(err){return null}finally{clearTimeout(timer)}}
+/* ── 内置 LightGBM 推理（lgbm-flat-v1） ─────────────────────────────
+   vendor/lgbm_bodyfat.json 由 ml/train_lgbm.py 从 Kaggle Body Fat Extended
+   数据集训练后导出：每棵树按先序展平成数组，节点 =
+   [是否叶子, 特征下标, 分裂阈值, 左子下标, 右子下标, 叶子值]。
+   预测值 = 所有树叶子值之和（学习率已经折进叶子值），所以浏览器里几十行
+   代码就能复现 Python 侧同一个模型的输出，不再依赖 127.0.0.1:8001。
+   模型加载失败（file:// 打开或被拦截）时返回 null，上层自动退回线性公式。 */
+const LGBM={model:null,error:null,pending:null};
+function lgbmLoad(){
+  if(LGBM.pending)return LGBM.pending;
+  LGBM.pending=fetch('./vendor/lgbm_bodyfat.json',{cache:'force-cache'})
+    .then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.json()})
+    .then(m=>{if(!m||!m.trees||!m.trees.length)throw new Error('模型文件为空');LGBM.model=m;return m})
+    .catch(e=>{LGBM.error=e;console.warn('[LightGBM] 模型未加载，改用线性公式兜底：'+e.message);return null});
+  return LGBM.pending;
+}
+function lgbmPredict(x){
+  const m=LGBM.model;if(!m)return null;
+  const f=m.feature_names.map(k=>+x[k]);
+  if(f.some(v=>v!==v||v===Infinity||v===-Infinity))return null;
+  let sum=0;
+  for(let t=0;t<m.trees.length;t++){
+    const tree=m.trees[t];let i=0,guard=0;
+    while(tree[i][0]===0&&guard++<512)i=f[tree[i][1]]<=tree[i][2]?tree[i][3]:tree[i][4];
+    sum+=tree[i][5];
+  }
+  return sum;
+}
+window.__lgbm={load:lgbmLoad,predict:lgbmPredict,state:()=>({ready:!!LGBM.model,error:LGBM.error?String(LGBM.error.message||LGBM.error):null,trees:LGBM.model?LGBM.model.trees.length:0})};
+lgbmLoad();
+async function predictBodyFatLightGBM(){
+  const male=document.querySelector('[name=gender]:checked').value==='male',height=+$('#height').value,weight=+$('#weight').value,waist=+$('#waist').value,age=+$('#age').value,hip=+$('#hip').value,arm=+$('#arm').value,bmi=weight/(height/100)**2;
+  if(!LGBM.model)await lgbmLoad();
+  const local=lgbmPredict({sex:male?1:0,age,height,weight,bmi,waist,hip,arm});
+  if(local!=null)return clamp(local,3,60);
+  /* 只有模型文件没加载成功时才访问本机 Python 服务（旧链路，保留兼容） */
+  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),4000);
+  try{const res=await fetch('http://127.0.0.1:8001/api/bodyfat/predict',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({Gender:male?1:2,Age:age,Weight:weight,Height:height,BMI:bmi,Waist:waist,Hip:hip,ArmCircumference:arm}),signal:ctl.signal});if(!res.ok)throw new Error('bad response');const data=await res.json();return clamp(+data.body_fat,3,60)}catch(err){return null}finally{clearTimeout(timer)}
+}
 $('#bodyForm').addEventListener('submit',e=>{e.preventDefault();const ids=mode==='pro'?['height','weight','waist','age','hip','arm']:['waist'];let ok=true;ids.forEach(id=>{const el=$('#'+id),v=+el.value;if(!v||v<+el.min||v>+el.max)ok=false});if(!ok){$('#formError').textContent='请检查所有数值是否填写完整并处于合理范围。';return}$('#formError').textContent='';$('#loading').classList.add('show');(async()=>{lgbmBf=mode==='pro'?await predictBodyFatLightGBM():null;result=calculate();renderAll();$('#loading').classList.remove('show');go(2)})()});
-function calculate(){const gender=document.querySelector('[name=gender]:checked').value,height=mode==='pro'?+$('#height').value:170,weight=mode==='pro'?+$('#weight').value:65,waist=+$('#waist').value,age=mode==='pro'?+$('#age').value:30,hip=mode==='pro'?+$('#hip').value:waist+(gender==='female'?20:10),arm=mode==='pro'?+$('#arm').value:(gender==='male'?31:28),bmi=weight/(height/100)**2;/* 严格使用用户指定的简单版与专业版公式 */let bf=mode==='simple'?(gender==='male'?0.567*waist-31.8:0.439*waist-15.2):1.20*bmi+0.23*age+0.15*waist-0.10*hip+0.08*arm-10.8*(gender==='male'?1:0)-5.4;bf=clamp(bf,3,60);if(mode==='pro'&&lgbmBf!=null)bf=lgbmBf;const whr=waist/hip,whtr=waist/height,healthyMid=gender==='male'?16:23,bodyAge=clamp(Math.round(age+(bf-healthyMid)*.75+(bmi-22)*.35),10,90),bmr=Math.round(10*weight+6.25*height-5*age+(gender==='male'?5:-161)),lean=weight*(1-bf/100);return{gender,height,weight,waist,age,hip,arm,bmi,bf,whr,whtr,bodyAge,bmr,lean,shape:getShape(gender,whr,waist,hip,arm),bodyType:getBodyType(bmi,bf,arm,gender),indices:getIndices(bf,waist,hip,arm,gender),contrib:shapContrib({bmi,age,waist,hip,arm},gender==='male')}}
+function calculate(){const gender=document.querySelector('[name=gender]:checked').value,height=mode==='pro'?+$('#height').value:170,weight=mode==='pro'?+$('#weight').value:65,waist=+$('#waist').value,age=mode==='pro'?+$('#age').value:30,hip=mode==='pro'?+$('#hip').value:waist+(gender==='female'?20:10),arm=mode==='pro'?+$('#arm').value:(gender==='male'?31:28),bmi=weight/(height/100)**2;/* 严格使用用户指定的简单版与专业版公式 */let bf=mode==='simple'?(gender==='male'?0.567*waist-31.8:0.439*waist-15.2):1.20*bmi+0.23*age+0.15*waist-0.10*hip+0.08*arm-10.8*(gender==='male'?1:0)-5.4;bf=clamp(bf,3,60);if(mode==='pro'&&lgbmBf!=null)bf=lgbmBf;const whr=waist/hip,whtr=waist/height,healthyMid=gender==='male'?16:23,bodyAge=clamp(Math.round(age+(bf-healthyMid)*.75+(bmi-22)*.35),10,90),bmr=Math.round(10*weight+6.25*height-5*age+(gender==='male'?5:-161)),lean=weight*(1-bf/100);return{gender,height,weight,waist,age,hip,arm,bmi,bf,whr,whtr,bodyAge,bmr,lean,shape:getShape(gender,whr,waist,hip,arm),bodyType:getBodyType(bmi,bf,arm,gender),indices:getIndices(bf,waist,hip,arm,gender),contrib:shapContrib({bmi,age,waist,hip,arm},gender==='male',bf)}}
 function getShape(g,whr,w,h,a){if(whr>(g==='male'?.93:.86))return'苹果形';if(whr<(g==='male'?.82:.74))return'梨形';if(g==='female'&&whr<.82&&h-w>18)return'沙漏形';if(g==='male'&&a>34&&whr<.9)return'倒三角形';return'H 形'}
 function getBodyType(bmi,bf,arm,g){const highMuscle=arm>(g==='male'?34:31),lowFat=bf<(g==='male'?14:21),highFat=bf>(g==='male'?25:32);if(bmi<18.5)return highMuscle?'偏瘦肌肉型':'偏瘦型';if(highMuscle&&lowFat)return'标准肌肉型';if(highMuscle&&bmi>=28)return'偏胖肌肉型';if(highMuscle)return'肌肉发达型';if(highFat&&bmi>=28)return'浮肿肥胖型';if(highFat)return'缺乏运动型';if(bmi>=24)return'肌肉偏胖型';return'标准型'}
 /* 各部位脂肪指数的唯一口径（2D 分区图与 3D 热图共用，不再各有一套系数）
@@ -155,15 +193,18 @@ function bfFrom(x,male){return clamp(1.20*x.bmi+0.23*x.age+0.15*x.waist-0.10*x.h
 /* partTh 在下方 module 块里（3D 热力图用），IIFE 作用域访问不到，
    所以经由 window.__partTh 桥接，保证与 3D 用的是同一张厚度表。
    万一 3D 模块没加载起来，用下面的同构副本兜底，逻辑必须与之一致。 */
-function thOf(x,male){
-  const bf=bfFrom(x,male),zI=getIndices(bf,x.waist,x.hip,x.arm,male?'male':'female');
+function thOf(x,male,bfNow){
+  /* bfNow：页面已经用模型算出的体脂。传进来才能保证第 4 页的厚度表
+     与第 3 页「优先关注」、3D 热力图是同一份数据（否则模型结果与
+     线性公式各说一套，排序会打架）。子集归因仍用 bfFrom 做代理模型。 */
+  const bf=(bfNow==null?bfFrom(x,male):bfNow),zI=getIndices(bf,x.waist,x.hip,x.arm,male?'male':'female');
   const f=window.__partTh;
   if(f)return f(zI,male);
   const ab=zI.abdomen;
   return {abdomen:ab,waist:(zI.waist!=null?zI.waist:ab*0.76),chest:zI.chest,
     hip:zI.hip,thigh:zI.thigh,arm:zI.arm,calf:Math.max(zI.thigh*0.30,zI.arm*0.26)};
 }
-function shapContrib(x,male){
+function shapContrib(x,male,bfNow){
   const n=SHAP_KEYS.length,fact=[1,1,2,6,24,120],base=SHAP_BASE[male?'male':'female'];
   const acc={},per={};PART_KEYS.forEach(k=>{acc[k]=0;per[k]={}});
   const v=S=>{const o={};SHAP_KEYS.forEach(k=>o[k]=S.includes(k)?x[k]:base[k]);return thOf(o,male)};
@@ -183,7 +224,7 @@ function shapContrib(x,male){
      第一名打架（第四页腰侧/腹部，第三页腹部/臀部）。既然这一页的任务是
      「和第三页指向同一部位」，排序依据就必须是同一张表的绝对指数；
      SHAP 的作用退到 tooltip：告诉你这一块的指数主要是被哪个指标撑起来的。 */
-  const thx=thOf(x,male);
+  const thx=thOf(x,male,bfNow);
   return PART_KEYS.map(pk=>{
     const top=SHAP_KEYS.map(k=>[SHAP_NAMES[k],Math.abs(per[pk][k]||0)]).sort((a,b)=>b[1]-a[1])[0];
     return {key:pk,name:PART_CN[pk],value:thx[pk],phi:acc[pk],top:top[0],parts:per[pk]};

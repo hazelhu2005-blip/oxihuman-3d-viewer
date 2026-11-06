@@ -1,0 +1,64 @@
+{
+  "target": "body_fat",
+  "feature_names": [
+    "sex",
+    "age",
+    "height",
+    "weight",
+    "bmi",
+    "waist",
+    "hip",
+    "arm"
+  ],
+  "feature_cn": {
+    "sex": "性别",
+    "age": "年龄",
+    "height": "身高",
+    "weight": "体重",
+    "bmi": "BMI",
+    "waist": "腰围",
+    "hip": "臀围",
+    "arm": "上臂围"
+  },
+  "sex_encoding": {
+    "male": 1,
+    "female": 0,
+    "frontend_male": 1,
+    "frontend_female": 2
+  },
+  "best_params": {
+    "colsample_bytree": 0.85,
+    "learning_rate": 0.03,
+    "n_estimators": 200,
+    "num_leaves": 7,
+    "reg_lambda": 1.0,
+    "subsample": 0.7
+  },
+  "n_estimators_used": 133,
+  "metrics": {
+    "cv_rmse": 4.4418,
+    "test_rmse": 4.1734,
+    "test_mae": 3.4401,
+    "test_r2": 0.6458,
+    "n_train": 302,
+    "n_val": 65,
+    "n_test": 65,
+    "best_iteration": 133,
+    "n_estimators_grid": 200
+  },
+  "dataset": {
+    "name": "Body Fat Extended Dataset (Kaggle, simonezappatini)",
+    "rows_raw": 436,
+    "rows_used": 432,
+    "sha256": "2c6896ceee9492ed492ccff853776a15d261e4af16a8a110daab9d26aa005b8d"
+  },
+  "lib": {
+    "lightgbm": "4.7.0",
+    "sklearn": "1.8.0",
+    "pandas": "3.0.2",
+    "numpy": "2.4.4",
+    "python": "3.12.5"
+  },
+  "trained_at": "2026-11-06 19:37:03",
+  "elapsed_sec": 78.0
+}
